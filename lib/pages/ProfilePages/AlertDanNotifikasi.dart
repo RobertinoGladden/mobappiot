@@ -103,24 +103,37 @@ class _AlertDanNotifikasiPageState extends State<AlertDanNotifikasiPage>
   }
 
   Future<void> _bootstrapInitialAlerts() async {
-    await _loadAlertsWithRetry(maxAttempts: 5);
+    // Muat cepat: 2 percobaan dengan timeout pendek agar UI tidak menggantung
+    // lama saat backend lambat / cold-start. Jika gagal, polling 20 detik dan
+    // pull-to-refresh akan memulihkan datanya.
+    await _loadAlertsWithRetry(
+      maxAttempts: 2,
+      perAttemptTimeout: const Duration(seconds: 6),
+      retryDelay: const Duration(milliseconds: 400),
+    );
   }
 
-  Future<List<Map<String, dynamic>>> _fetchAlertsOnce() async {
+  Future<List<Map<String, dynamic>>> _fetchAlertsOnce({
+    Duration? timeout,
+  }) async {
+    final t = timeout ?? const Duration(seconds: 10);
     switch (_feedMode) {
       case _AlertFeedMode.active:
         return NotifAlertService.getActiveAlerts(
           overrideBaseUrl: _resolvedOverrideBaseUrl,
+          timeout: t,
         );
       case _AlertFeedMode.history24h:
         return NotifAlertService.getAlertHistory(
           period: '24h',
           overrideBaseUrl: _resolvedOverrideBaseUrl,
+          timeout: t,
         );
       case _AlertFeedMode.history7d:
         return NotifAlertService.getAlertHistory(
           period: '7d',
           overrideBaseUrl: _resolvedOverrideBaseUrl,
+          timeout: t,
         );
     }
   }
@@ -130,6 +143,7 @@ class _AlertDanNotifikasiPageState extends State<AlertDanNotifikasiPage>
     bool showError = true,
     int maxAttempts = 1,
     Duration retryDelay = const Duration(milliseconds: 700),
+    Duration? perAttemptTimeout,
   }) async {
     if (!silent && mounted) {
       setState(() {
@@ -140,7 +154,7 @@ class _AlertDanNotifikasiPageState extends State<AlertDanNotifikasiPage>
 
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        final rawAlerts = await _fetchAlertsOnce();
+        final rawAlerts = await _fetchAlertsOnce(timeout: perAttemptTimeout);
 
         final parsedAlerts = rawAlerts
             .map(

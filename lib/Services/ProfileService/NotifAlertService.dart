@@ -179,10 +179,11 @@ class NotifAlertService {
 		final shouldCloseClient = client == null;
 		final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
 
+		// Backend mengharapkan query `hours` (integer), bukan `period` string.
+		// Map nilai period umum ("24h", "7d", dst) ke jumlah jam.
+		final hours = _periodToHours(period);
 		final historyUri = Uri.parse('$resolvedBaseUrl/alerts/history').replace(
-			queryParameters: period == null || period.trim().isEmpty
-					? null
-					: {'period': period.trim()},
+			queryParameters: {'hours': hours.toString()},
 		);
 
 		try {
@@ -348,6 +349,24 @@ class NotifAlertService {
 		final prefs = await SharedPreferences.getInstance();
 		await prefs.setString(_localSettingsKey, jsonEncode(settings));
 		return settings;
+	}
+
+	static int _periodToHours(String? period) {
+		final value = period?.trim().toLowerCase();
+		if (value == null || value.isEmpty) {
+			return 24;
+		}
+
+		// Bentuk "<angka><unit>" mis. 24h, 7d, 48h, 1d.
+		final match = RegExp(r'^(\d+)\s*([hd]?)$').firstMatch(value);
+		if (match != null) {
+			final amount = int.tryParse(match.group(1) ?? '') ?? 24;
+			final unit = match.group(2);
+			final hours = unit == 'd' ? amount * 24 : amount;
+			return hours.clamp(1, 168);
+		}
+
+		return 24;
 	}
 
 	static String? _extractMessage(String responseBody) {

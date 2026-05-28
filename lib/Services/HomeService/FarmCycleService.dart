@@ -516,6 +516,96 @@ class FarmCycleService {
     }
   }
 
+  static Future<FarmCycleResult> deleteFarmCycle({
+    required int cycleId,
+    http.Client? client,
+    String? overrideBaseUrl,
+    String? authToken,
+  }) async {
+    final resolvedToken = authToken ?? await _readStoredToken();
+    if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      debugPrint('[FarmCycleService] Missing auth token for DELETE /farming-cycle/$cycleId');
+      return const FarmCycleResult(
+        success: false,
+        message: 'Token autentikasi tidak ditemukan. Silakan login ulang.',
+      );
+    }
+
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+    final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
+
+    debugPrint(
+      '[FarmCycleService] DELETE $resolvedBaseUrl/farming-cycle/$cycleId '
+      '(token length: ${resolvedToken.trim().length})',
+    );
+
+    try {
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .delete(
+                Uri.parse('$resolvedBaseUrl/farming-cycle/$cycleId'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
+        },
+      );
+
+      debugPrint(
+        '[FarmCycleService] DELETE /farming-cycle/$cycleId status: ${response.statusCode}',
+      );
+
+      final decodedBody = _decodeResponseBody(response.body);
+
+      if (response.statusCode == 401) {
+        await _clearInvalidSession();
+        return FarmCycleResult(
+          success: false,
+          message: _extractMessage(decodedBody) ??
+              'Token tidak valid atau sudah expired. Silakan login ulang.',
+        );
+      }
+
+      if (response.statusCode != 200 &&
+          response.statusCode != 204) {
+        _logFailure('DELETE /farming-cycle/$cycleId', response.statusCode, response.body);
+
+        return FarmCycleResult(
+          success: false,
+          message: _extractMessage(decodedBody) ??
+              'Gagal menghapus farming cycle (${response.statusCode})',
+        );
+      }
+
+      return FarmCycleResult(
+        success: true,
+        message: _extractMessage(decodedBody) ?? 'Farming cycle berhasil dihapus',
+      );
+    } on TimeoutException {
+      return const FarmCycleResult(
+        success: false,
+        message: 'Request timeout. Server terlalu lama merespons, coba lagi.',
+      );
+    } catch (error) {
+      return FarmCycleResult(
+        success: false,
+        message: 'Tidak dapat menghapus farming cycle: $error',
+      );
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
   static List<FarmCycle> _extractCycles(Object? decodedBody) {
     final candidates = <Object?>[];
 

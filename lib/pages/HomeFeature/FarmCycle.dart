@@ -33,6 +33,7 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
   ];
 
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
   late final TextEditingController _cycleNameController;
   late final TextEditingController _seedingDateController;
 
@@ -60,6 +61,7 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
   @override
   void dispose() {
     _dayRefreshTimer?.cancel();
+    _scrollController.dispose();
     _cycleNameController.dispose();
     _seedingDateController.dispose();
     super.dispose();
@@ -99,6 +101,7 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
         child: RefreshIndicator(
           onRefresh: _loadCycles,
           child: ListView(
+            controller: _scrollController,
             padding: const EdgeInsets.all(16),
             children: [
               const Text(
@@ -354,11 +357,38 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
                     ),
                   ),
                 ),
-              IconButton(
-                onPressed: () => _startEdit(cycle),
+              PopupMenuButton<String>(
+                tooltip: 'Opsi cycle',
                 icon: const Icon(Icons.edit_outlined),
-                tooltip: 'Edit cycle',
-                visualDensity: VisualDensity.compact,
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    _startEdit(cycle);
+                  } else if (value == 'delete') {
+                    _confirmDeleteCycle(cycle);
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem<String>(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 20, color: _primary),
+                        SizedBox(width: 12),
+                        Text('Edit'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline, size: 20, color: Color(0xFFDC2626)),
+                        SizedBox(width: 12),
+                        Text('Hapus', style: TextStyle(color: Color(0xFFDC2626))),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -440,6 +470,104 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
       _selectedSeedingDate = cycle.seedingDate;
       _seedingDateController.text = _formatDate(cycle.seedingDate);
       _submitMessage = null;
+    });
+
+    // Form ada di atas daftar — gulir ke atas agar mode edit terlihat user.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _confirmDeleteCycle(FarmCycle cycle) async {
+    final cycleId = cycle.id;
+    if (cycleId == null) {
+      return;
+    }
+
+    final cycleLabel = cycle.cycleName ?? 'ID $cycleId';
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Hapus Farm Cycle'),
+          content: Text(
+            'Yakin ingin menghapus "$cycleLabel"? '
+            'Seluruh jadwal, riwayat pakan, dan stok yang terkait '
+            'dengan cycle ini juga akan ikut terhapus. '
+            'Tindakan ini tidak dapat dibatalkan.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+              child: const Text('Hapus'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _submitMessage = null;
+    });
+
+    final result = await FarmCycleService.deleteFarmCycle(cycleId: cycleId);
+
+    if (!mounted) return;
+
+    setState(() {
+      _isSubmitting = false;
+    });
+
+    if (result.success) {
+      // Kalau cycle yang dihapus sedang dipilih/diedit, bersihkan state-nya.
+      if (_selectedCycleId == cycleId) {
+        await _clearSelectedCycle();
+      }
+      if (_editingCycleId == cycleId) {
+        _cancelEdit();
+      }
+      await _loadCycles();
+    }
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: result.success ? _success : Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _clearSelectedCycle() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in _cycleIdKeys) {
+      await prefs.remove(key);
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _selectedCycleId = null;
+      _selectedCycleName = null;
     });
   }
 
