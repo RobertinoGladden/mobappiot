@@ -13,8 +13,9 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:my_app/Services/ProfileService/riwayat_data_service.dart';
 
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html show AnchorElement, Blob, Url;
+// Conditional import: pakai dart:html di web, stub di Android/iOS
+import 'export_web.dart'
+    if (dart.library.io) 'export_stub.dart';
 
 enum SensorExportFormat {
   csv,
@@ -67,16 +68,16 @@ class SensorExportService {
 
       final fileName = _buildFileName(format);
 
-      // Web: download via browser
+      // Web (browser/localhost): download via browser
       if (kIsWeb) {
-        return await _exportWeb(
+        return _exportWeb(
           rows: rows,
           format: format,
           fileName: fileName,
         );
       }
 
-      // Mobile / Desktop: tulis ke file
+      // Android / iOS / Desktop: tulis ke file
       return await _exportNative(
         rows: rows,
         format: format,
@@ -94,18 +95,17 @@ class SensorExportService {
   }
 
   // ── Web export ─────────────────────────────────────────────────
-  static Future<SensorExportResult> _exportWeb({
+  static SensorExportResult _exportWeb({
     required List<Map<String, dynamic>> rows,
     required SensorExportFormat format,
     required String fileName,
-  }) async {
+  }) {
     try {
       List<int> bytes;
       String mimeType;
 
       if (format == SensorExportFormat.csv) {
-        final csvText = _buildCsv(rows);
-        bytes = utf8.encode(csvText);
+        bytes = utf8.encode(_buildCsv(rows));
         mimeType = 'text/csv;charset=utf-8;';
       } else {
         bytes = _buildXlsxBytes(rows);
@@ -113,12 +113,8 @@ class SensorExportService {
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       }
 
-      final blob = html.Blob([bytes], mimeType);
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
-        ..setAttribute('download', fileName)
-        ..click();
-      html.Url.revokeObjectUrl(url);
+      // Panggil fungsi dari conditional import
+      downloadFileWeb(bytes, fileName, mimeType);
 
       return SensorExportResult(
         success: true,
@@ -190,8 +186,7 @@ class SensorExportService {
     required String fileName,
   }) async {
     final directory = await _resolveExportDirectory(preferredFolder);
-    final file =
-        File('${directory.path}${Platform.pathSeparator}$fileName');
+    final file = File('${directory.path}${Platform.pathSeparator}$fileName');
 
     switch (format) {
       case SensorExportFormat.csv:
@@ -229,10 +224,8 @@ class SensorExportService {
 
   static Future<void> _requestAndroidStoragePermission() async {
     if (!Platform.isAndroid) return;
-
     final status = await Permission.storage.status;
     if (status.isGranted) return;
-
     await Permission.storage.request();
   }
 
@@ -243,8 +236,8 @@ class SensorExportService {
     final dd = now.day.toString().padLeft(2, '0');
     final hh = now.hour.toString().padLeft(2, '0');
     final min = now.minute.toString().padLeft(2, '0');
-    final extension = format == SensorExportFormat.csv ? 'csv' : 'xlsx';
-    return 'sensor_data_${yyyy}-${mm}-${dd}_${hh}${min}.$extension';
+    final ext = format == SensorExportFormat.csv ? 'csv' : 'xlsx';
+    return 'sensor_data_${yyyy}-${mm}-${dd}_${hh}${min}.$ext';
   }
 
   static String _buildCsv(List<Map<String, dynamic>> rows) {
@@ -252,9 +245,8 @@ class SensorExportService {
     final data = <List<dynamic>>[headers];
 
     for (final row in rows) {
-      data.add(headers
-          .map((header) => _formatCellValue(row[header]))
-          .toList());
+      data.add(
+          headers.map((header) => _formatCellValue(row[header])).toList());
     }
 
     return const ListToCsvConverter().convert(data);
@@ -322,9 +314,7 @@ class SensorExportService {
 
     for (final row in rows) {
       for (final key in row.keys) {
-        if (seen.add(key)) {
-          headers.add(key);
-        }
+        if (seen.add(key)) headers.add(key);
       }
     }
 
@@ -334,21 +324,14 @@ class SensorExportService {
   static String _formatCellValue(dynamic value) {
     if (value == null) return '';
 
-    if (value is DateTime) {
-      return _formatTimestamp(value);
-    }
-
-    if (value is Map || value is List) {
-      return value.toString();
-    }
+    if (value is DateTime) return _formatTimestamp(value);
+    if (value is Map || value is List) return value.toString();
 
     final text = value.toString().trim();
     if (text.isEmpty) return '';
 
     final parsedDate = DateTime.tryParse(text);
-    if (parsedDate != null) {
-      return _formatTimestamp(parsedDate);
-    }
+    if (parsedDate != null) return _formatTimestamp(parsedDate);
 
     return text;
   }
@@ -370,7 +353,6 @@ class SensorExportService {
 
   static Map<String, dynamic>? _asStringKeyedMap(dynamic value) {
     if (value is! Map) return null;
-
     return value.map(
       (key, dynamic nestedValue) => MapEntry(key.toString(), nestedValue),
     );
