@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../AuthSessionService.dart';
 import '../ProfileService.dart';
 import '../api_service.dart';
+import 'FarmingCycleResolver.dart';
 
 class FeedHistoryEntry {
   const FeedHistoryEntry({
@@ -341,33 +342,8 @@ class FeedHistoryService {
     }
   }
 
-  static Future<int?> resolveFarmingCycleId() async {
-    final prefs = await SharedPreferences.getInstance();
-    const keys = <String>[
-      'farming_cycle_id',
-      'farmingCycleId',
-      'selected_farming_cycle_id',
-      'selectedFarmingCycleId',
-      'active_farming_cycle_id',
-      'activeFarmingCycleId',
-      'cycle_id',
-      'cycleId',
-    ];
-
-    for (final key in keys) {
-      final intValue = prefs.getInt(key);
-      if (intValue != null) {
-        return intValue;
-      }
-
-      final stringValue = prefs.getString(key);
-      final parsed = int.tryParse(stringValue?.trim() ?? '');
-      if (parsed != null) {
-        return parsed;
-      }
-    }
-
-    return null;
+  static Future<int?> resolveFarmingCycleId({bool preferBackend = false}) async {
+    return FarmingCycleResolver.resolveCycleId(preferBackend: preferBackend);
   }
 
   static Future<String?> _readStoredToken() async {

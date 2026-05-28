@@ -25,6 +25,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   static bool _hasTriggeredSessionRefresh = false;
   int _selectedIndex = 0;
+  final GlobalKey<ControlScreenState> _controlScreenKey =
+      GlobalKey<ControlScreenState>();
   late Future<Map<String, dynamic>> futureData;
   Map<String, dynamic>? _lastSensorData;
   Map<String, dynamic>? _lastPredictionData;
@@ -580,6 +582,14 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedIndex = index;
     });
+
+    // Saat tab Control (index 1) dibuka, segarkan datanya agar mengikuti
+    // farming cycle aktif terbaru tanpa perlu refresh manual.
+    if (index == 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _controlScreenKey.currentState?.refreshAll();
+      });
+    }
   }
 
   @override
@@ -590,7 +600,7 @@ class _HomePageState extends State<HomePage> {
         index: _selectedIndex,
         children: [
           _buildDashboardView(),
-          const ControlScreen(),
+          ControlScreen(key: _controlScreenKey),
           AnalyticsScreen(
             predictionData: _lastPredictionData,
             isLoading: _isFetchingPrediction && _lastPredictionData == null,

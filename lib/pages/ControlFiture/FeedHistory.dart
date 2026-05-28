@@ -6,10 +6,10 @@ class FeedHistoryCard extends StatefulWidget {
   const FeedHistoryCard({super.key});
 
   @override
-  State<FeedHistoryCard> createState() => _FeedHistoryCardState();
+  State<FeedHistoryCard> createState() => FeedHistoryCardState();
 }
 
-class _FeedHistoryCardState extends State<FeedHistoryCard> {
+class FeedHistoryCardState extends State<FeedHistoryCard> {
   static const Color _surface = Color(0xFFFFFFFF);
   static const Color _primary = Color(0xFF2563EB);
   static const Color _textPrimary = Color(0xFF1F2937);
@@ -36,7 +36,10 @@ class _FeedHistoryCardState extends State<FeedHistoryCard> {
     });
   }
 
-  Future<void> _refreshHistory() async {
+  /// Dipanggil dari luar (ControlScreen) saat tab kontrol dibuka.
+  Future<void> reloadFromActiveCycle() => _refreshHistory();
+
+  Future<void> _refreshHistory({bool preferBackend = false}) async {
     if (_isLoading) {
       return;
     }
@@ -48,7 +51,9 @@ class _FeedHistoryCardState extends State<FeedHistoryCard> {
     });
 
     try {
-      final resolvedCycleId = await FeedHistoryService.resolveFarmingCycleId();
+      final resolvedCycleId = await FeedHistoryService.resolveFarmingCycleId(
+        preferBackend: preferBackend,
+      );
       if (resolvedCycleId == null) {
         throw Exception('farming_cycle_id belum ditemukan. Silakan pilih farm cycle aktif terlebih dahulu.');
       }

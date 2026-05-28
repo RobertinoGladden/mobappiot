@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../AuthSessionService.dart';
 import '../api_service.dart';
 import '../ProfileService.dart';
+import 'FarmingCycleResolver.dart';
 
 class FeedStock {
   const FeedStock({
@@ -357,38 +358,14 @@ class StockPakanService {
 
   static Future<int?> resolveFarmingCycleId({
     Map<String, dynamic>? fallbackData,
+    bool preferBackend = false,
   }) async {
     final fromData = _extractFarmingCycleIdFromMap(fallbackData);
     if (fromData != null) {
       return fromData;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    const keys = <String>[
-      'farming_cycle_id',
-      'farmingCycleId',
-      'selected_farming_cycle_id',
-      'selectedFarmingCycleId',
-      'active_farming_cycle_id',
-      'activeFarmingCycleId',
-      'cycle_id',
-      'cycleId',
-    ];
-
-    for (final key in keys) {
-      final intValue = prefs.getInt(key);
-      if (intValue != null) {
-        return intValue;
-      }
-
-      final stringValue = prefs.getString(key);
-      final parsed = int.tryParse(stringValue?.trim() ?? '');
-      if (parsed != null) {
-        return parsed;
-      }
-    }
-
-    return null;
+    return FarmingCycleResolver.resolveCycleId(preferBackend: preferBackend);
   }
 
   static Future<String?> _readStoredToken() async {

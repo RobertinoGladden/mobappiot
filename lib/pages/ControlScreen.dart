@@ -12,10 +12,10 @@ class ControlScreen extends StatefulWidget {
   const ControlScreen({super.key});
 
   @override
-  State<ControlScreen> createState() => _ControlScreenState();
+  State<ControlScreen> createState() => ControlScreenState();
 }
 
-class _ControlScreenState extends State<ControlScreen> with AutomaticKeepAliveClientMixin {
+class ControlScreenState extends State<ControlScreen> with AutomaticKeepAliveClientMixin {
   static const Color _background = Color(0xFFF9FAFB);
   static const Color _surface = Color(0xFFFFFFFF);
   static const Color _primary = Color(0xFF2563EB);
@@ -47,6 +47,11 @@ class _ControlScreenState extends State<ControlScreen> with AutomaticKeepAliveCl
   Timer? _actuatorTimer;
   Timer? _stockTimer;
 
+  final GlobalKey<JadwalPakanCardState> _scheduleKey =
+      GlobalKey<JadwalPakanCardState>();
+  final GlobalKey<FeedHistoryCardState> _feedHistoryKey =
+      GlobalKey<FeedHistoryCardState>();
+
   @override
   bool get wantKeepAlive => true;
 
@@ -60,6 +65,23 @@ class _ControlScreenState extends State<ControlScreen> with AutomaticKeepAliveCl
         _startAutoRefresh();
       }
     });
+  }
+
+  /// Dipanggil dari HomePage ketika tab Control dibuka, agar semua data
+  /// mengikuti farming cycle terpilih terbaru tanpa refresh manual.
+  ///
+  /// Resolusi cycle id tetap mengutamakan pilihan user yang tersimpan di cache;
+  /// backend (`/farming-cycle/active`) hanya dipakai sebagai fallback kalau cache
+  /// masih kosong (mis. setelah login baru). Ini mencegah pilihan cycle lama
+  /// tertimpa oleh "active cycle" backend secara tak terduga.
+  Future<void> refreshAll() async {
+    if (!mounted) return;
+    await Future.wait<void>([
+      _refreshActuatorStatus(),
+      _refreshStockPakan(),
+      _scheduleKey.currentState?.reloadFromActiveCycle() ?? Future.value(),
+      _feedHistoryKey.currentState?.reloadFromActiveCycle() ?? Future.value(),
+    ]);
   }
 
   void _startAutoRefresh() {
@@ -159,7 +181,7 @@ class _ControlScreenState extends State<ControlScreen> with AutomaticKeepAliveCl
     });
   }
 
-  Future<void> _refreshStockPakan() async {
+  Future<void> _refreshStockPakan({bool preferBackend = false}) async {
     if (_isLoadingStockPakan) return;
 
     setState(() {
@@ -168,7 +190,12 @@ class _ControlScreenState extends State<ControlScreen> with AutomaticKeepAliveCl
     });
 
     try {
-      final stock = await StockPakanService.getRemainingFeedStock();
+      final cycleId = await StockPakanService.resolveFarmingCycleId(
+        preferBackend: preferBackend,
+      );
+      final stock = await StockPakanService.getRemainingFeedStock(
+        farmingCycleId: cycleId,
+      );
       if (!mounted) return;
 
       setState(() {
@@ -780,8 +807,8 @@ class _ControlScreenState extends State<ControlScreen> with AutomaticKeepAliveCl
     );
   }
 
-  Widget _buildScheduleCard() => const JadwalPakanCard();
-  Widget _buildFeedHistoryCard() => const FeedHistoryCard();
+  Widget _buildScheduleCard() => JadwalPakanCard(key: _scheduleKey);
+  Widget _buildFeedHistoryCard() => FeedHistoryCard(key: _feedHistoryKey);
 
   Widget _buildStockCard() {
     return StockPakanCard(

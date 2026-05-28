@@ -6,10 +6,10 @@ class JadwalPakanCard extends StatefulWidget {
 	const JadwalPakanCard({super.key});
 
 	@override
-	State<JadwalPakanCard> createState() => _JadwalPakanCardState();
+	State<JadwalPakanCard> createState() => JadwalPakanCardState();
 }
 
-class _JadwalPakanCardState extends State<JadwalPakanCard> {
+class JadwalPakanCardState extends State<JadwalPakanCard> {
 	static const Color _surface = Color(0xFFFFFFFF);
 	static const Color _primary = Color(0xFF2563EB);
 	static const Color _textPrimary = Color(0xFF1F2937);
@@ -35,7 +35,11 @@ class _JadwalPakanCardState extends State<JadwalPakanCard> {
 		});
 	}
 
-	Future<void> _refreshSchedules() async {
+	/// Dipanggil dari luar (ControlScreen) saat tab kontrol dibuka, agar
+	/// mengikuti cycle aktif terbaru dari backend tanpa perlu refresh manual.
+	Future<void> reloadFromActiveCycle() => _refreshSchedules();
+
+	Future<void> _refreshSchedules({bool preferBackend = false}) async {
 		if (_isLoading) {
 			return;
 		}
@@ -46,7 +50,9 @@ class _JadwalPakanCardState extends State<JadwalPakanCard> {
 		});
 
 		try {
-			final resolvedCycleId = await JadwalPakanService.resolveFarmingCycleId();
+			final resolvedCycleId = await JadwalPakanService.resolveFarmingCycleId(
+				preferBackend: preferBackend,
+			);
 			final schedules = await JadwalPakanService.getFeedSchedules(
 				farmingCycleId: resolvedCycleId,
 			);
