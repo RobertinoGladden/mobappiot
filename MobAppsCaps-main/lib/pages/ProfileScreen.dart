@@ -1,0 +1,511 @@
+// ignore_for_file: file_names
+
+import 'package:flutter/material.dart';
+import 'package:my_app/Services/ProfileService.dart';
+import 'package:my_app/Services/ProfileService/NotificationService.dart';
+import 'package:my_app/pages/ProfilePages/AlertDanNotifikasi.dart';
+import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
+import 'package:my_app/pages/ProfilePages/KalibrasiSensor.dart';
+import 'package:my_app/pages/ProfilePages/EditProfile.dart';
+import 'package:my_app/pages/ProfilePages/PengaturanSistem.dart';
+import 'package:my_app/pages/login_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  late Future<ProfileResult> _profileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = ProfileService.getMyProfile();
+  }
+
+  Future<void> _refreshProfile() async {
+    setState(() {
+      _profileFuture = ProfileService.getMyProfile();
+    });
+
+    await _profileFuture;
+  }
+
+  static const Color _primary = Color(0xFF2563EB);
+  static const Color _background = Color(0xFFF9FAFB);
+  static const Color _surface = Color(0xFFFFFFFF);
+  static const Color _textPrimary = Color(0xFF1F2937);
+  static const Color _textSecondary = Color(0xFF6B7280);
+  static const Color _muted = Color(0xFF9CA3AF);
+  static const Color _border = Color(0xFFE5E7EB);
+  static const Color _highlight = Color(0xFFBFDBFE);
+  static const Color _iconAccent = Color(0xFF3B82F6);
+  static const Color _danger = Color(0xFFDC2626);
+  static const Color _cardBackground = Color(0xFFF3F4F6);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _background,
+      body: SafeArea(
+        child: FutureBuilder<ProfileResult>(
+          future: _profileFuture,
+          builder: (context, snapshot) {
+            final result = snapshot.data;
+            final isLoading =
+                snapshot.connectionState == ConnectionState.waiting;
+            final profile = result?.profile;
+            final errorMessage = snapshot.hasError
+                ? snapshot.error.toString()
+                : (result != null && !result.success ? result.message : null);
+
+            return RefreshIndicator(
+              onRefresh: _refreshProfile,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  const outerPadding = 16.0;
+                  const spacing = 16.0;
+                  final contentWidth = constraints.maxWidth - (outerPadding * 2);
+                  final twoColumn = contentWidth >= 860;
+                  final halfWidth = twoColumn
+                      ? (contentWidth - spacing) / 2
+                      : contentWidth;
+
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(
+                      outerPadding,
+                      outerPadding,
+                      outerPadding,
+                      24,
+                    ),
+                    child: Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: [
+                        SizedBox(
+                          width: contentWidth,
+                          child: _buildHeader(),
+                        ),
+                        SizedBox(
+                          width: contentWidth,
+                          child: _buildProfileCard(
+                            profile: profile,
+                            isLoading: isLoading,
+                            errorMessage: errorMessage,
+                          ),
+                        ),
+                        SizedBox(
+                          width: twoColumn ? halfWidth : contentWidth,
+                          child: _buildMenuCard(context),
+                        ),
+                        SizedBox(
+                          width: twoColumn ? halfWidth : contentWidth,
+                          child: _buildLogoutButton(context),
+                        ),
+                        SizedBox(
+                          width: contentWidth,
+                          height: MediaQuery.of(context).padding.bottom,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'BluVera',
+          style: TextStyle(
+            color: _primary,
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Profile',
+          style: TextStyle(
+            color: _textPrimary,
+            fontSize: 26,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        SizedBox(height: 4),
+        Text(
+          'Pengaturan akun dan sistem',
+          style: TextStyle(
+            color: _textSecondary,
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileCard({
+    required ProfileUser? profile,
+    required bool isLoading,
+    required String? errorMessage,
+  }) {
+    final displayName = profile?.fullName ?? 'Data profile belum tersedia';
+    final displayGreenhouse = profile?.greenhouseLocation ?? '-';
+    final displayEmail = profile?.email ?? '-';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _primary,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 28,
+            backgroundColor: _highlight,
+            child: isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      valueColor: AlwaysStoppedAnimation<Color>(_primary),
+                    ),
+                  )
+                : const Icon(Icons.person, color: _primary, size: 30),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  displayGreenhouse,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                Text(
+                  displayEmail,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    errorMessage,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenuCard(BuildContext context) {
+    final items = <_MenuItemData>[
+      const _MenuItemData(
+        icon: Icons.notifications_active_outlined,
+        title: 'Notifikasi & Alert',
+        subtitle: 'Atur peringatan sistem',
+        isNotificationAlert: true,
+      ),
+      const _MenuItemData(
+        icon: Icons.history,
+        title: 'Riwayat Data',
+        subtitle: 'Lihat data historis',
+        isRiwayatData: true,
+      ),
+      const _MenuItemData(
+        icon: Icons.water_drop_outlined,
+        title: 'Kalibrasi Sensor',
+        subtitle: 'Terakhir : 2 hari lalu',
+        isKalibrasiSensor: true,
+      ),
+      const _MenuItemData(
+        icon: Icons.person_outline,
+        title: 'Edit Profile',
+        subtitle: 'Perbarui informasi akun',
+        isEditProfile: true,
+      ),
+      const _MenuItemData(
+        icon: Icons.settings_outlined,
+        title: 'Pengaturan Sistem',
+        subtitle: 'Atur preferensi aplikasi',
+        isSystemSettings: true,
+      ),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _border),
+      ),
+      child: Column(
+        children: items.map((item) => _buildMenuItem(context, item)).toList(),
+      ),
+    );
+  }
+
+  Widget _buildMenuItem(BuildContext context, _MenuItemData item) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: () {
+            if (item.isNotificationAlert) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const AlertDanNotifikasiPage(),
+                ),
+              );
+            } else if (item.isRiwayatData) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const RiwayatDataPage(),
+                ),
+              );
+            } else if (item.isKalibrasiSensor) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const KalibrasiSensorPage(),
+                ),
+              );
+            } else if (item.isEditProfile) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const EditProfilePage(),
+                ),
+              );
+            } else if (item.isSystemSettings) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const PengaturanSistemPage(),
+                ),
+              );
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                _buildMenuLeading(item),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        item.subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right, color: _muted),
+              ],
+            ),
+          ),
+        ),
+        if (item != _menuDividerSentinel)
+          const Divider(height: 1, thickness: 1, color: _border),
+      ],
+    );
+  }
+
+  Widget _buildMenuLeading(_MenuItemData item) {
+    final base = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: _cardBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(item.icon, color: _iconAccent),
+    );
+
+    if (!item.isNotificationAlert) {
+      return base;
+    }
+
+    return ValueListenableBuilder<int>(
+      valueListenable: NotificationPopupManager.unreadCountNotifier,
+      builder: (_, unreadCount, __) {
+        if (unreadCount <= 0) {
+          return base;
+        }
+
+        final badgeText = unreadCount > 99 ? '99+' : '$unreadCount';
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            base,
+            Positioned(
+              right: -7,
+              top: -6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: _danger,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white, width: 1.2),
+                ),
+                child: Text(
+                  badgeText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Keluar'),
+          content: const Text('Apakah Anda yakin ingin keluar dari akun ini?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: _danger),
+              child: const Text('Keluar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout != true || !context.mounted) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', false);
+    await prefs.remove('authToken');
+    await prefs.remove('refreshToken');
+    await prefs.remove('tokenType');
+    await prefs.remove('userEmail');
+    await prefs.remove('farming_cycle_id');
+    await prefs.remove('farmingCycleId');
+    await prefs.remove('selected_farming_cycle_id');
+    await prefs.remove('selectedFarmingCycleId');
+    await prefs.remove('active_farming_cycle_id');
+    await prefs.remove('activeFarmingCycleId');
+    await prefs.remove('cycle_id');
+    await prefs.remove('cycleId');
+    await ProfileService.clearCachedProfile();
+
+    if (!context.mounted) {
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+  }
+
+  Widget _buildLogoutButton(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _handleLogout(context),
+        icon: const Icon(Icons.logout_rounded),
+        label: const Text(
+          'Keluar',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _danger,
+          side: const BorderSide(color: _danger),
+          backgroundColor: _surface,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuItemData {
+  const _MenuItemData({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.isNotificationAlert = false,
+    this.isRiwayatData = false,
+    this.isKalibrasiSensor = false,
+    this.isEditProfile = false,
+    this.isSystemSettings = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isNotificationAlert;
+  final bool isRiwayatData;
+  final bool isKalibrasiSensor;
+  final bool isEditProfile;
+  final bool isSystemSettings;
+}
+
+const _MenuItemData _menuDividerSentinel =
+    _MenuItemData(icon: Icons.info, title: '', subtitle: '');
