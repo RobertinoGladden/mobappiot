@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/ControlService.dart';
 import 'package:my_app/pages/ControlFiture/FeedHistory.dart';
@@ -14,7 +15,7 @@ class ControlScreen extends StatefulWidget {
   State<ControlScreen> createState() => _ControlScreenState();
 }
 
-class _ControlScreenState extends State<ControlScreen> {
+class _ControlScreenState extends State<ControlScreen> with AutomaticKeepAliveClientMixin {
   static const Color _background = Color(0xFFF9FAFB);
   static const Color _surface = Color(0xFFFFFFFF);
   static const Color _primary = Color(0xFF2563EB);
@@ -23,6 +24,10 @@ class _ControlScreenState extends State<ControlScreen> {
   static const Color _borderColor = Color(0xFFE5E7EB);
   static const Color _success = Color(0xFF059669);
   static const List<String> _actuatorDeviceNames = ['pompa', 'aerator'];
+
+  // Auto-refresh interval
+  static const Duration _actuatorRefreshInterval = Duration(seconds: 10);
+  static const Duration _stockRefreshInterval = Duration(seconds: 30);
 
   bool _isAutoMode = true;
   bool _isLoadingActuatorStatus = false;
@@ -37,6 +42,13 @@ class _ControlScreenState extends State<ControlScreen> {
   String? _stockPakanError;
   String? _stockStatsError;
   String? _stockHistoryError;
+  DateTime? _lastActuatorRefreshAt;
+
+  Timer? _actuatorTimer;
+  Timer? _stockTimer;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -45,14 +57,69 @@ class _ControlScreenState extends State<ControlScreen> {
       if (mounted) {
         _refreshActuatorStatus();
         _refreshStockPakan();
+        _startAutoRefresh();
       }
     });
   }
 
-  Future<void> _refreshActuatorStatus() async {
-    if (_isLoadingActuatorStatus) {
-      return;
+  void _startAutoRefresh() {
+    _actuatorTimer?.cancel();
+    _stockTimer?.cancel();
+
+    _actuatorTimer = Timer.periodic(_actuatorRefreshInterval, (_) {
+      if (mounted && !_isLoadingActuatorStatus) {
+        _refreshActuatorStatusSilent();
+      }
+    });
+
+    _stockTimer = Timer.periodic(_stockRefreshInterval, (_) {
+      if (mounted && !_isLoadingStockPakan) {
+        _refreshStockPakan();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _actuatorTimer?.cancel();
+    _stockTimer?.cancel();
+    super.dispose();
+  }
+
+  // Silent refresh — tidak set loading state agar UI tidak berkedip
+  Future<void> _refreshActuatorStatusSilent() async {
+    final snapshots = <String, ActuatorSnapshot>{};
+    final errors = <String, String>{};
+
+    try {
+      final actuatorSnapshots = await ControlService.getAllActuatorStatus();
+      for (final snapshot in actuatorSnapshots) {
+        snapshots[snapshot.deviceName.toLowerCase()] = snapshot;
+      }
+      for (final deviceName in _actuatorDeviceNames) {
+        if (!snapshots.containsKey(deviceName)) {
+          errors[deviceName] = 'Status device tidak ditemukan';
+        }
+      }
+    } catch (_) {
+      return; // silent fail — jangan update state kalau error
     }
+
+    if (!mounted) return;
+
+    setState(() {
+      _actuatorSnapshots
+        ..clear()
+        ..addAll(snapshots);
+      _actuatorStatusErrors
+        ..clear()
+        ..addAll(errors);
+      _lastActuatorRefreshAt = DateTime.now();
+    });
+  }
+
+  Future<void> _refreshActuatorStatus() async {
+    if (_isLoadingActuatorStatus) return;
 
     setState(() {
       _isLoadingActuatorStatus = true;
@@ -64,11 +131,9 @@ class _ControlScreenState extends State<ControlScreen> {
 
     try {
       final actuatorSnapshots = await ControlService.getAllActuatorStatus();
-
       for (final snapshot in actuatorSnapshots) {
         snapshots[snapshot.deviceName.toLowerCase()] = snapshot;
       }
-
       for (final deviceName in _actuatorDeviceNames) {
         if (!snapshots.containsKey(deviceName)) {
           errors[deviceName] = 'Status device tidak ditemukan';
@@ -80,9 +145,7 @@ class _ControlScreenState extends State<ControlScreen> {
       }
     }
 
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     setState(() {
       _actuatorSnapshots
@@ -92,13 +155,12 @@ class _ControlScreenState extends State<ControlScreen> {
         ..clear()
         ..addAll(errors);
       _isLoadingActuatorStatus = false;
+      _lastActuatorRefreshAt = DateTime.now();
     });
   }
 
   Future<void> _refreshStockPakan() async {
-    if (_isLoadingStockPakan) {
-      return;
-    }
+    if (_isLoadingStockPakan) return;
 
     setState(() {
       _isLoadingStockPakan = true;
@@ -107,9 +169,7 @@ class _ControlScreenState extends State<ControlScreen> {
 
     try {
       final stock = await StockPakanService.getRemainingFeedStock();
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _stockPakan = stock;
@@ -120,10 +180,7 @@ class _ControlScreenState extends State<ControlScreen> {
         await _refreshStockStats(stockId);
         await _refreshStockHistory(stockId);
       } else {
-        if (!mounted) {
-          return;
-        }
-
+        if (!mounted) return;
         setState(() {
           _stockStats = null;
           _stockHistory = const [];
@@ -132,10 +189,7 @@ class _ControlScreenState extends State<ControlScreen> {
         });
       }
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() {
         _stockPakanError = error.toString().replaceFirst('Exception: ', '');
       });
@@ -149,9 +203,7 @@ class _ControlScreenState extends State<ControlScreen> {
   }
 
   Future<void> _refreshStockStats(int stockId) async {
-    if (_isLoadingStockStats) {
-      return;
-    }
+    if (_isLoadingStockStats) return;
 
     setState(() {
       _isLoadingStockStats = true;
@@ -160,19 +212,12 @@ class _ControlScreenState extends State<ControlScreen> {
 
     try {
       final stats = await StockPakanService.getFeedStockStats(stockId: stockId);
-
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() {
         _stockStats = stats;
       });
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() {
         _stockStats = null;
         _stockStatsError = error.toString().replaceFirst('Exception: ', '');
@@ -187,9 +232,7 @@ class _ControlScreenState extends State<ControlScreen> {
   }
 
   Future<void> _refreshStockHistory(int stockId) async {
-    if (_isLoadingStockHistory) {
-      return;
-    }
+    if (_isLoadingStockHistory) return;
 
     setState(() {
       _isLoadingStockHistory = true;
@@ -201,19 +244,12 @@ class _ControlScreenState extends State<ControlScreen> {
         stockId: stockId,
         limit: 100,
       );
-
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() {
         _stockHistory = history;
       });
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() {
         _stockHistory = const [];
         _stockHistoryError = error.toString().replaceFirst('Exception: ', '');
@@ -227,8 +263,18 @@ class _ControlScreenState extends State<ControlScreen> {
     }
   }
 
+  String _formatLastRefresh() {
+    final t = _lastActuatorRefreshAt;
+    if (t == null) return '';
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    final ss = t.second.toString().padLeft(2, '0');
+    return 'Update: $hh:$mm:$ss';
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Material(
       color: _background,
       child: SafeArea(
@@ -283,7 +329,8 @@ class _ControlScreenState extends State<ControlScreen> {
                   ),
                   SizedBox(
                     width: availableWidth,
-                    height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom,
+                    height: kBottomNavigationBarHeight +
+                        MediaQuery.of(context).padding.bottom,
                   ),
                 ],
               ),
@@ -295,10 +342,10 @@ class _ControlScreenState extends State<ControlScreen> {
   }
 
   Widget _buildHeader() {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           'BluVera',
           style: TextStyle(
             color: _primary,
@@ -306,8 +353,8 @@ class _ControlScreenState extends State<ControlScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
-        SizedBox(height: 6),
-        Text(
+        const SizedBox(height: 6),
+        const Text(
           'Kontrol Sistem',
           style: TextStyle(
             color: _textPrimary,
@@ -315,10 +362,44 @@ class _ControlScreenState extends State<ControlScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        SizedBox(height: 4),
-        Text(
-          'Alat pemberian pakan otomatis/manual',
-          style: TextStyle(color: _textSecondary, fontSize: 14),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            const Text(
+              'Alat pemberian pakan otomatis/manual',
+              style: TextStyle(color: _textSecondary, fontSize: 14),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _success.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: _success,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Auto-refresh aktif',
+                    style: TextStyle(
+                      color: _success,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -380,21 +461,29 @@ class _ControlScreenState extends State<ControlScreen> {
           ),
           const SizedBox(height: 16),
           ..._actuatorDeviceNames.map(_buildActuatorRow),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed:
-                  _isLoadingActuatorStatus ? null : _refreshActuatorStatus,
-              icon: _isLoadingActuatorStatus
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh_rounded, size: 16),
-              label:
-                  Text(_isLoadingActuatorStatus ? 'Memuat' : 'Refresh semua'),
-            ),
+          Row(
+            children: [
+              if (_lastActuatorRefreshAt != null)
+                Text(
+                  _formatLastRefresh(),
+                  style: const TextStyle(
+                    color: _textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _isLoadingActuatorStatus ? null : _refreshActuatorStatus,
+                icon: _isLoadingActuatorStatus
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 16),
+                label: Text(_isLoadingActuatorStatus ? 'Memuat' : 'Refresh'),
+              ),
+            ],
           ),
         ],
       ),
@@ -453,9 +542,7 @@ class _ControlScreenState extends State<ControlScreen> {
                   builder: (_) => const ControlActuatorPage(),
                 ),
               );
-              if (!context.mounted) {
-                return;
-              }
+              if (!context.mounted) return;
               await _refreshActuatorStatus();
             },
             style: ElevatedButton.styleFrom(
@@ -500,8 +587,7 @@ class _ControlScreenState extends State<ControlScreen> {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: _primary.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(999),
@@ -694,13 +780,8 @@ class _ControlScreenState extends State<ControlScreen> {
     );
   }
 
-  Widget _buildScheduleCard() {
-    return const JadwalPakanCard();
-  }
-
-  Widget _buildFeedHistoryCard() {
-    return const FeedHistoryCard();
-  }
+  Widget _buildScheduleCard() => const JadwalPakanCard();
+  Widget _buildFeedHistoryCard() => const FeedHistoryCard();
 
   Widget _buildStockCard() {
     return StockPakanCard(
